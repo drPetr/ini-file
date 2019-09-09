@@ -29,18 +29,24 @@ inihandler_t
 #### Параметры секции
 Параметр - это единица состовляющая секции. Параметр содержит в себе две логические единицы информации - это ключ и значение. Ключ отделён от значения символом **=** равно.
 
+#### Комментарии
+Комментарии могут быть в любой части файла. Комментарий начинается с символа **;** точка с запятой, а заканчивается символом **\n** концом строки.
+
 ### Пример содержимого ini-файла
 ```
 ; file "my_file.ini"
 #include "new_file.ini"
 
-[empty_section]
+;comment
+[empty_section]; comment
+; comment
 
 [section_one]
 key_sect1 = value1, value2, "string value\n"
-key_sect2 = 1, 2, 3, 4
+key_sect2 = 1, 2, 3, 4; comment
 
-[section_two]: section_one, empty_section
+[section_two]: section_one, empty_section; comment
 key_sect1 = 123, 456
-new_key = "Key value"
+; comment
+new_key = "Key value"; comment
 ```
