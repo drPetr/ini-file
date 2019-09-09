@@ -1,12 +1,14 @@
 // This is an independent project of an individual developer. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++, C#, and Java: http://www.viva64.com
 
-#include "ini.h"
+#include <ini.h>
 
 #include <assert.h>
-#include <stdarg.h>
 #include <string.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 
 #ifdef ININO_DEBUG
     #define iniassert(expr)
@@ -2078,37 +2080,6 @@ IniNextHeir
 ================
 */
 void* IniNextHeir( void* h ) {
-    /*inihandler_t* handler;
-    
-    iniassert( h );
-    iniassert( ((inihandler_t*)h)->inh );
-    
-    handler = (inihandler_t*)h;
-    handler->inh = handler->inh->next;
-    
-    // If inifilter is defined then find first filename file name suitable 
-    // for the filter
-    if( handler->inifilter ) {
-        while( handler->inh && !handler->inifilter( handler->inh,
-                handler->userData ) ) {
-            handler->inh = handler->inh->next;
-        }
-    }
-    
-    if( handler->inh ) {
-        handler->sect = handler->inh->sect;
-        handler->string = handler->sect->key;
-        handler->cstr = handler->string->string;
-        handler->length = handler->string->length;
-    } else {
-        handler->sect = NULL;
-        handler->string = NULL;
-        handler->cstr = NULL;
-        handler->length = 0;
-        return NULL;
-    }
-    return h;*/
-
     return IniNextInherit( h );
 }
 
