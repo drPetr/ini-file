@@ -28,3 +28,19 @@ inihandler_t
 
 #### Параметры секции
 Параметр - это единица состовляющая секции. Параметр содержит в себе две логические единицы информации - это ключ и значение. Ключ отделён от значения символом **=** равно.
+
+### Пример содержимого ini-файла
+```
+; file "my_file.ini"
+#include "new_file.ini"
+
+[empty_section]
+
+[section_one]
+key_sect1 = value1, value2, "string value\n"
+key_sect2 = 1, 2, 3, 4
+
+[section_two]: section_one, empty_section
+key_sect1 = 123, 456
+new_key = "Key value"
+```
