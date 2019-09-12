@@ -129,8 +129,10 @@ inisect_t* IniSectCreate( ini_t* ini, inistring_t* key, inistring_t* comment ) {
     s->comment = comment;
     s->firstParam = NULL;
     s->lastParam = NULL;
-    s->inherited = NULL;
+    s->inherit = NULL;
+    s->inheritLast = NULL;
     s->heirs = NULL;
+    s->heirsLast = NULL;
     s->filename = NULL;
     return s;
 }
@@ -255,7 +257,7 @@ static iniparam_t* IniFindInInherit( inisect_t* sect, const char* key, ptrdiff_t
     
     iniassert( sect );
     
-    inh = sect->inherited;
+    inh = sect->inherit;
     while( inh ) {
         p = IniFindOnlyInSect( inh->inhSect, key, length );
         if( p ) {
@@ -342,7 +344,7 @@ IniSectIsInheriteded
 */
 static int IniSectIsInheriteded( inisect_t* sect, iniinh_t* inh ) {
     iniinh_t* it;
-    it = sect->inherited;
+    it = sect->inherit;
     while( it ) {
         if( it == inh ) {
             return 1;
@@ -855,7 +857,7 @@ static void IniFprintSect( FILE* f, inisect_t* s, int includeignore ) {
         if( s->key ) {  // [section_name]
             fprintf( f, "[%s]", s->key->string );
         }
-        inh = s->inherited;
+        inh = s->inherit;
         if( inh ) {     // :inherit1, inherit2, ...
             fprintf( f, ":" );
             while( inh ) {
@@ -998,7 +1000,7 @@ static void IniFreeSect( inisect_t* s ) {
     
     free = s->filename->ini->inifree;
     p = s->firstParam;
-    inh = s->inherited;
+    inh = s->inherit;
     heir = s->heirs;
     
     // free sect key
@@ -1399,7 +1401,7 @@ void IniExcludeInherit( iniinh_t* inh ) {
 
 #ifndef ININO_DEBUG
     // check for inherit
-    it = inh->sect->inherited;
+    it = inh->sect->inherit;
     while( it && it != inh ) {
         it = it->next;
     }
@@ -1420,19 +1422,25 @@ void IniExcludeInherit( iniinh_t* inh ) {
         }
         iniassert( it->next );
         heir = it->next;
-        it->next = heir->next;   
+        it->next = heir->next;
+    }
+    if( it->next == NULL ) {
+        curSect->inheritLast = it;
     }
     
     // exclude from inherited
-    it = curSect->inherited;
+    it = curSect->inherit;
     if( it == inh ) { // is first
-        curSect->inherited = it->next;
+        curSect->inherit = it->next;
     } else {
         while( it->next != inh ) {
             it = it->next;
         }
         iniassert( it );
         it->next = inh->next;
+    }
+    if( it->next == NULL ) {
+        curSect->heirsLast = it;
     }
 
     // free elements
@@ -1446,7 +1454,7 @@ IniExcludeSect
 ================
 */
 void IniExcludeSect( inisect_t* sect ) {
-    inisect_t* it;
+    /*inisect_t* it;
     inidescr_t* descr;
     ini_t* ini;
     iniinh_t* inh;
@@ -1516,21 +1524,7 @@ void IniExcludeSect( inisect_t* sect ) {
    // iniinh_t*           inherited;  // Список наследованных секций (то что наследуется текущей секцией)
    // iniinh_t*           heirs;      // Список секций прямых наследников (то что наследует текущую секцию)
     
-    inh = sect->inherited;
-    while( inh ) {
-        inhtmp = inh;
-        inh = inh->next;
-        //inhtmp->sect->heirs;
-        free( inhtmp );
-       
-    }
-    
-   // iniinh_t* sectinh;
-   // iniinh_t* sectinhtmp;
-    
-    //inh = sect->heirs;
-    
-    IniFreeSect( sect );
+    IniFreeSect( sect );*/
 }
 
 
@@ -1739,7 +1733,7 @@ IniSectInherit
 int IniSectInherit( inisect_t* sect, const char* name ) {
     ini_t* ini;
     inisect_t* found;
-    iniinh_t* inh;;
+    iniinh_t* created;
     
     iniassert( sect );
     iniassert( sect->filename );
@@ -1754,28 +1748,24 @@ int IniSectInherit( inisect_t* sect, const char* name ) {
         return -1;
     }
     // Add to inherit
-    if( sect->inherited ) {
-        inh = sect->inherited;
-        while( inh->next ) {
-            inh = inh->next;
-        }
-        inh->next = IniInheritCreate( ini, found );
-        inh->next->sect = sect;
+    created = IniInheritCreate( ini, found );
+    created->sect = sect;
+    if( sect->inherit ) {
+        sect->inheritLast->next = created;
+        sect->inheritLast = created; 
     } else {
-        sect->inherited = IniInheritCreate( ini, found );
-        sect->inherited->sect = sect;
+        sect->inherit = created;
+        sect->inheritLast = created;
     }
     // Add to heirs
+    created = IniHeirCreate( ini, sect );
+    created->sect = found;
     if( found->heirs ) {
-        inh = found->heirs;
-        while( inh->next ) {
-            inh = inh->next;
-        }
-        inh->next = IniHeirCreate( ini, sect );
-        inh->next->sect = found;
+        found->heirsLast->next = created;
+        found->heirsLast = created;
     } else {
-        found->heirs = IniHeirCreate( ini, sect );
-        found->heirs->sect = found;
+        found->heirs = created;
+        found->heirsLast = created;
     }
     return 0;
 }
@@ -1828,13 +1818,12 @@ int IniSave( ini_t* ini ) {
     int ret = 0;
     inidescr_t* d;
     FILE* file;
-    
+
     iniassert( ini );
-    
     d = ini->filenames;
-    
     IniClearErrors( ini );
-    
+
+    // save files
     while( d ) {
         if( (file = fopen(d->filename->string, "w")) == NULL ) {
             IniPrint( ini, "error: can not open file for saving '%s'\n", d->filename->string );
@@ -1845,7 +1834,6 @@ int IniSave( ini_t* ini ) {
         }
         d = d->next;
     }
-    
     return ret;
 }
 
@@ -2182,7 +2170,7 @@ void* IniFirstInherit( inihandler_t* handler, inisect_t* sect, fnIniFilter filte
     handler->inifilter = filter;
     handler->userData = userData;
     handler->descr = NULL;
-    handler->inh = sect->inherited;
+    handler->inh = sect->inherit;
     handler->param = NULL;
     
     // If inifilter is defined then find first filename file name suitable 

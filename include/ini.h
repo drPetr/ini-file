@@ -54,8 +54,10 @@ typedef struct inisect_s {
     inistring_t*        comment;    // Комментарий идущий после секции
     iniparam_t*         firstParam; // Первый параметр в секции
     iniparam_t*         lastParam;  // Последний параметр в секции
-    iniinh_t*           inherited;  // Список наследованных секций
+    iniinh_t*           inherit;    // Список наследованных секций
+    iniinh_t*           inheritLast;// Последний из списка наследованных секций
     iniinh_t*           heirs;      // Список секций прямых наследников
+    iniinh_t*           heirsLast;  // Последний из списка прямых наследников
     inidescr_t*         filename;   // Файл в котором находится секция
 } inisect_t;
 
