@@ -78,7 +78,8 @@ static iniinh_t* IniInheritCreate( ini_t* ini, inisect_t* sect ) {
     
     inh = (iniinh_t*)ini->inimalloc( sizeof(iniinh_t) );
     inh->next = NULL;
-    inh->sect = sect;
+    inh->inhSect = sect;
+    inh->sect = NULL;
     return inh;
 }
 
@@ -88,15 +89,6 @@ IniHeirCreate
 ================
 */
 static iniinh_t* IniHeirCreate( ini_t* ini, inisect_t* sect ) {
-    /*iniinh_t* inh;
-    
-    iniassert( ini );
-    iniassert( sect );
-    
-    inh = (iniinh_t*)ini->inimalloc( sizeof(iniinh_t) );
-    inh->next = NULL;
-    inh->sect = sect;
-    return inh;*/
     return IniInheritCreate( ini, sect );
 }
 
@@ -265,11 +257,11 @@ static iniparam_t* IniFindInInherit( inisect_t* sect, const char* key, ptrdiff_t
     
     inh = sect->inherited;
     while( inh ) {
-        p = IniFindOnlyInSect( inh->sect, key, length );
+        p = IniFindOnlyInSect( inh->inhSect, key, length );
         if( p ) {
             return p;
         }
-        p = IniFindInInherit( inh->sect, key, length );
+        p = IniFindInInherit( inh->inhSect, key, length );
         if( p ) {
             return p;
         }
@@ -339,6 +331,25 @@ static void IniPrint( ini_t* ini, const char* fmt, ... ) {
         va_end( args );
     }
     ini->numOfErrors++;
+}
+
+/*
+================
+IniSectIsInheriteded
+
+Возвращает 1 если inh есть в списке наследованных секций иначе возвращает 0
+================
+*/
+static int IniSectIsInheriteded( inisect_t* sect, iniinh_t* inh ) {
+    iniinh_t* it;
+    it = sect->inherited;
+    while( it ) {
+        if( it == inh ) {
+            return 1;
+        }
+        it = it->next;
+    }
+    return 0;
 }
 
 
@@ -848,7 +859,7 @@ static void IniFprintSect( FILE* f, inisect_t* s, int includeignore ) {
         if( inh ) {     // :inherit1, inherit2, ...
             fprintf( f, ":" );
             while( inh ) {
-                fprintf( f, "%s", inh->sect->key->string );
+                fprintf( f, "%s", inh->inhSect->key->string );
                 inh = inh->next;
                 if( inh ) {
                     fprintf( f, ", " );
@@ -1324,6 +1335,208 @@ void IniSetPrintFilenameInBottom( ini_t* ini, unsigned char flag ) {
 
 /*
 ================
+IniExcludeParam
+================
+*/
+void IniExcludeParam( iniparam_t* param ) {
+    iniparam_t* it;
+    inisect_t* sect;
+    fnIniFree free;
+    int paramIsFirst;
+    int paramIsLast;
+    
+    iniassert( param );
+    
+    sect = param->sect;
+    free = sect->filename->ini->inifree;
+    it = sect->firstParam;
+    paramIsFirst = param == sect->firstParam;
+    paramIsLast = param == sect->lastParam;
+    
+    // if only parametr in section
+    if( paramIsFirst && paramIsLast ) {
+        sect->firstParam = NULL;
+        sect->lastParam = NULL;
+    } else if( paramIsFirst ) { // parametr is first
+        sect->firstParam = param->next;
+    } else if( paramIsLast ) { // parametr is last
+        while( it->next != param ) {
+            it = it->next;
+        }
+        it->next = NULL;
+        sect->lastParam = it;
+    } else { // parametr in middle
+        while( it->next != param ) {
+            it = it->next;
+        }
+        it->next = param->next;
+    }
+    
+    // free parameter
+    if( param->key ) {
+        free( param->key );
+    }
+    if( param->value ) {
+        free( param->value );
+    }
+    if( param->comment ) {
+        free( param->comment );
+    }
+}
+
+/*
+================
+IniExcludeInherit
+================
+*/
+void IniExcludeInherit( iniinh_t* inh ) {
+    iniinh_t* heir;
+    iniinh_t* it;
+    inisect_t* curSect;
+    fnIniFree free;
+
+    iniassert( inh );
+
+#ifndef ININO_DEBUG
+    // check for inherit
+    it = inh->sect->inherited;
+    while( it && it != inh ) {
+        it = it->next;
+    }
+    iniassert( it );
+    iniassert( inh->inhSect->heirs );
+#endif
+
+    curSect = inh->sect;
+    free = curSect->filename->ini->inifree;
+    it = inh->inhSect->heirs;
+    // exclude from heir
+    if( it->inhSect == curSect ) { // is first
+        it->inhSect->heirs = it->next;
+        heir = it;
+    } else {
+        while( it->next && (it->next->inhSect != curSect) ) {
+            it = it->next;
+        }
+        iniassert( it->next );
+        heir = it->next;
+        it->next = heir->next;   
+    }
+    
+    // exclude from inherited
+    it = curSect->inherited;
+    if( it == inh ) { // is first
+        curSect->inherited = it->next;
+    } else {
+        while( it->next != inh ) {
+            it = it->next;
+        }
+        iniassert( it );
+        it->next = inh->next;
+    }
+
+    // free elements
+    free(heir);
+    free(inh);
+}
+
+/*
+================
+IniExcludeSect
+================
+*/
+void IniExcludeSect( inisect_t* sect ) {
+    inisect_t* it;
+    inidescr_t* descr;
+    ini_t* ini;
+    iniinh_t* inh;
+    iniinh_t* inhtmp;
+    //iniinh_t* sectinh;
+    //iniinh_t* sectinhtmp;
+    fnIniFree free;
+    int sectIsFirst;
+    int sectIsLast;
+
+    //iniassert( 0 );
+    iniassert( sect->filename->gsect != sect );
+    iniassert( sect );
+    iniassert( sect->filename );
+    iniassert( sect->filename->ini );
+
+    descr = sect->filename;
+    ini = descr->ini;
+    free = ini->inifree;
+    it = ini->firstSect;
+    sectIsFirst = ini->firstSect == sect;
+    sectIsLast = ini->lastSect == sect;
+
+    // Exclude from ini_t
+    if( sectIsFirst && sectIsLast ) {
+        ini->firstSect = NULL;
+        ini->lastSect = NULL;
+    } else if( sectIsFirst ) {
+        ini->firstSect = it->next;
+    } else if( sectIsLast ) {
+        while( it->next != sect ) {
+            it = it->next;
+        }
+        it->next = NULL;
+        ini->lastSect = it;
+    } else {
+        while( it->next != sect ) {
+            it = it->next;
+        }
+        it->next = sect->next;
+    }
+    
+    it = descr->gsect->next;
+    sectIsFirst = descr->gsect->next == sect;
+    sectIsLast = descr->lastSect == sect;
+    
+    // Exclude from inidescr_t
+    if( sectIsFirst && sectIsLast ) {
+        descr->gsect->next = NULL;
+        descr->lastSect = NULL;
+    } else if( sectIsFirst ) {
+        descr->gsect->next = it->next;
+    } else if( sectIsLast ) {
+        while( it->next != sect ) {
+            it = it->next;
+        }
+        it->next = NULL;
+        ini->lastSect = it;
+    } else {
+        while( it->next != sect ) {
+            it = it->next;
+        }
+        it->next = sect->next;
+    }
+    
+    
+   // iniinh_t*           inherited;  // Список наследованных секций (то что наследуется текущей секцией)
+   // iniinh_t*           heirs;      // Список секций прямых наследников (то что наследует текущую секцию)
+    
+    inh = sect->inherited;
+    while( inh ) {
+        inhtmp = inh;
+        inh = inh->next;
+        //inhtmp->sect->heirs;
+        free( inhtmp );
+       
+    }
+    
+   // iniinh_t* sectinh;
+   // iniinh_t* sectinhtmp;
+    
+    //inh = sect->heirs;
+    
+    IniFreeSect( sect );
+}
+
+
+
+/*
+================
 IniAppendDescr
 ================
 */
@@ -1547,8 +1760,10 @@ int IniSectInherit( inisect_t* sect, const char* name ) {
             inh = inh->next;
         }
         inh->next = IniInheritCreate( ini, found );
+        inh->next->sect = sect;
     } else {
         sect->inherited = IniInheritCreate( ini, found );
+        sect->inherited->sect = sect;
     }
     // Add to heirs
     if( found->heirs ) {
@@ -1557,8 +1772,10 @@ int IniSectInherit( inisect_t* sect, const char* name ) {
             inh = inh->next;
         }
         inh->next = IniHeirCreate( ini, sect );
+        inh->next->sect = found;
     } else {
         found->heirs = IniHeirCreate( ini, sect );
+        found->heirs->sect = found;
     }
     return 0;
 }
@@ -1979,7 +2196,7 @@ void* IniFirstInherit( inihandler_t* handler, inisect_t* sect, fnIniFilter filte
     
     // Check current filedescr
     if( handler->inh ) {
-        handler->sect = handler->inh->sect;
+        handler->sect = handler->inh->inhSect;
         handler->string = handler->sect->key;
         handler->cstr = handler->string->string;
         handler->length = handler->string->length;
@@ -2017,7 +2234,7 @@ void* IniNextInherit( void* h ) {
     }
     
     if( handler->inh ) {
-        handler->sect = handler->inh->sect;
+        handler->sect = handler->inh->inhSect;
         handler->string = handler->sect->key;
         handler->cstr = handler->string->string;
         handler->length = handler->string->length;
@@ -2060,7 +2277,7 @@ void* IniFirstHeir( inihandler_t* handler, inisect_t* sect, fnIniFilter filter, 
     
     // Check current filedescr
     if( handler->inh ) {
-        handler->sect = handler->inh->sect;
+        handler->sect = handler->inh->inhSect;
         handler->string = handler->sect->key;
         handler->cstr = handler->string->string;
         handler->length = handler->string->length;

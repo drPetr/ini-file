@@ -1,5 +1,6 @@
 lib
 obj
 main.c
-
-
+configs
+*.exe
+*.ltx

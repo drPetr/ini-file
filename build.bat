@@ -9,7 +9,7 @@ SET OBJS=ini.o
 SET LIBNAME=libini.a
 
 SET OPTIMIZE=-O3
-SET WARNINGS=-Wall
+SET WARNINGS=-Wall -Wno-unused-function
 SET INCLUDE=-Iinclude
 SET GCC_OPT=-c %OPTIMIZE% %WARNINGS% %INCLUDE%
 

@@ -34,7 +34,9 @@ typedef struct inidescr_s {
 
 typedef struct iniinh_s {
     struct iniinh_s*    next;       // Следующая унаследованная секция
-    struct inisect_s*   sect;       // Указатель на унаследованную секцию
+    struct inisect_s*   inhSect;    // Указатель на унаследованную секцию
+                                    // Или на наследника
+    struct inisect_s*   sect;       // Указатель секции к которой наследуется
 } iniinh_t;
 
 typedef struct iniparam_s {
@@ -52,7 +54,7 @@ typedef struct inisect_s {
     inistring_t*        comment;    // Комментарий идущий после секции
     iniparam_t*         firstParam; // Первый параметр в секции
     iniparam_t*         lastParam;  // Последний параметр в секции
-    iniinh_t*           inherited;  // Список прямых наследованных секций
+    iniinh_t*           inherited;  // Список наследованных секций
     iniinh_t*           heirs;      // Список секций прямых наследников
     inidescr_t*         filename;   // Файл в котором находится секция
 } inisect_t;
@@ -163,7 +165,17 @@ void IniSetPrintFilenameInBottom( ini_t* ini, unsigned char flag );
 // Изначально установлено в 0
 // Для вывода названия файла внизу нужно передать в flags значение 1
 
-//int IniExcludeDescr( inidescr_t* descr );
+
+
+void IniExcludeParam( iniparam_t* param );
+// Извлечь параметр param из секции и удалить его и все связанные с ним ссылки
+
+void IniExcludeInherit( iniinh_t* inh );
+// Извлечь унаследованную секцию inh, и удалить из списка inh из списка
+// унаследованных, функция так же удаляет ссылку из наследников секций
+
+void IniExcludeSect( inisect_t* sect );
+// TODO
 
 
 
@@ -318,6 +330,7 @@ void* IniNextParam( void* h );
   Обход унаследованных секций для указанной секции
 
 Результат выполнения IniFirstInherit и IniNextInherit:
+    handler->inh - указатель на наследованную секцию
     handler->sect - указатель на секцию
     handler->string - ini-строка, название текущей секции (key)
     handler->cstr - константный указатель на си строку (key)
@@ -330,6 +343,7 @@ void* IniNextInherit( void* h );
   Обход наследников секции
 
 Результат выполнения IniFirstHeir и IniNextHeir:
+    handler->inh - указатель на наследуемую секцию
     handler->sect - указатель на секцию
     handler->string - ini-строка, название текущей секции (key)
     handler->cstr - константный указатель на си строку (key)
