@@ -107,7 +107,7 @@ typedef struct {
 
 
 
-void IniInit( ini_t* ini, fnIniMalloc malloc, fnIniFree free, char* buf, ptrdiff_t size );
+void IniInit( ini_t* ini, fnIniMalloc malloc, fnIniFree free, fnIniMallocTag memtag, char* buf, ptrdiff_t size );
 // Инициализация ini структуры
 // malloc - аллокатор памяти, вызывается во всех аллокациях памяти.
 // free - освобождение памяти выделенной функцией malloc

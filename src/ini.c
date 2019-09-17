@@ -156,8 +156,9 @@ static inisect_t* IniSectCreate( ini_t* ini, inistring_t* key, inistring_t* comm
     iniassert( ini );
     iniassert( key );
     
-    if( IniFindSect( ini, key->string ) ) {
+    if( (s = IniFindSect( ini, key->string )) != NULL ) {
         printf( "already append sect: %s\n", key->string );
+        return s;
     }
     
     inicalldbg( ini->inimemtag, INI_MTAG_SECT );
@@ -231,7 +232,11 @@ static void IniAppendSect_s( inidescr_t* descr, inisect_t* sect ) {
     iniassert( descr );
     iniassert( sect );
     iniassert( descr->ini );
-    iniassert( !sect->filename );
+    //iniassert( !sect->filename );
+    
+    if( sect->filename ) {
+        return;
+    }
     
     ini = descr->ini;
     if( ini->firstSect ) {
@@ -898,7 +903,7 @@ static void IniFprintSect( FILE* f, inisect_t* s, int includeignore ) {
     if( printheirs ) {
         inh = s->heirs;
         if( inh ) {
-            fprintf( f, "; " );
+            fprintf( f, "; heirs: " );
             while( inh ) {
                 fprintf( f, "%s", inh->inhSect->key->string );
                 inh = inh->next;
@@ -1309,14 +1314,14 @@ static int IniScanString( char* src, char** endptr, char* dst ) {
 IniInit
 ================
 */
-void IniInit( ini_t* ini, fnIniMalloc malloc, fnIniFree free, char* buf, ptrdiff_t size ) {
+void IniInit( ini_t* ini, fnIniMalloc malloc, fnIniFree free, fnIniMallocTag memtag, char* buf, ptrdiff_t size ) {
     iniassert( ini );
     iniassert( malloc );
     iniassert( free );
     
     ini->inimalloc = malloc;
     ini->inifree = free;
-    ini->inimemtag = NULL;
+    ini->inimemtag = memtag;
     ini->errbuf = buf;
     ini->errbufSize = size;
     ini->numOfErrors = 0;
@@ -1532,6 +1537,9 @@ void IniExcludeParam( iniparam_t* param ) {
         sect->lastParam = NULL;
     } else if( paramIsFirst ) { // parametr is first
         sect->firstParam = param->next;
+        if( sect->firstParam == NULL ) {
+            sect->lastParam = NULL;
+        }
     } else if( paramIsLast ) { // parametr is last
         while( it->next != param ) {
             it = it->next;
@@ -1555,6 +1563,7 @@ void IniExcludeParam( iniparam_t* param ) {
     if( param->comment ) {
         free( param->comment );
     }
+    free( param );
 }
 
 /*
