@@ -12,9 +12,29 @@
 
 #ifdef ININO_DEBUG
     #define iniassert(expr)
+    #define inicalldbg(fn,...)
 #else
-    #define iniassert(expr) assert(expr)
+    #define iniassert(expr)     assert(expr)
+    #define inicalldbg(fn,...)  if(fn){fn(__VA_ARGS__);}else(void)0
 #endif
+
+
+
+#define INI_BIT(n)                      (1<<(n))
+#define INI_SET_BIT(var,bit,set)        if(set){var|=(bit);}else{var&=~(bit);}
+
+#define INI_FLAG_PARSE_COMMENTS         INI_BIT(8)
+#define INI_FLAG_EMPTY_LINE_AFTER_SECT  INI_BIT(9)
+#define INI_FLAG_PRINT_FNAME_TOP        INI_BIT(10)
+#define INI_FLAG_PRINT_FNAME_BOTTOM     INI_BIT(11)
+#define INI_FLAG_PRINT_COMMENTS         INI_BIT(12)
+#define INI_FLAG_PRINT_EMPTY_LINES      INI_BIT(13)
+#define INI_FLAG_SPACE_BEFORE_EQ        INI_BIT(14)
+#define INI_FLAG_SPACE_AFTER_EQ         INI_BIT(15)
+#define INI_FLAG_CHECK_FOR_SECT         INI_BIT(16)
+#define INI_FLAG_CHECK_FOR_PARAM        INI_BIT(17)
+#define INI_FLAG_PRINT_HEIRS            INI_BIT(18)
+
 
 
 typedef struct {
@@ -57,6 +77,8 @@ static inistring_t* IniStringCreate( ini_t* ini, const char* str, ptrdiff_t len 
     if( len < 0 ) {
         len = strlen(str);
     }
+    
+    inicalldbg( ini->inimemtag, INI_MTAG_STRING );
     s = (inistring_t*)ini->inimalloc( sizeof(inistring_t) + len + 1 );
     s->size = len + 1;
     s->length = len;
@@ -76,6 +98,7 @@ static iniinh_t* IniInheritCreate( ini_t* ini, inisect_t* sect ) {
     iniassert( ini );
     iniassert( sect );
     
+    inicalldbg( ini->inimemtag, INI_MTAG_INHERIT );
     inh = (iniinh_t*)ini->inimalloc( sizeof(iniinh_t) );
     inh->next = NULL;
     inh->inhSect = sect;
@@ -89,7 +112,17 @@ IniHeirCreate
 ================
 */
 static iniinh_t* IniHeirCreate( ini_t* ini, inisect_t* sect ) {
-    return IniInheritCreate( ini, sect );
+    iniinh_t* inh;
+    
+    iniassert( ini );
+    iniassert( sect );
+    
+    inicalldbg( ini->inimemtag, INI_MTAG_HEIR );
+    inh = (iniinh_t*)ini->inimalloc( sizeof(iniinh_t) );
+    inh->next = NULL;
+    inh->inhSect = sect;
+    inh->sect = NULL;
+    return inh;
 }
 
 /*
@@ -102,6 +135,7 @@ static iniparam_t* IniParamCreate( ini_t* ini, inistring_t* key, inistring_t* va
     
     iniassert( ini );
     
+    inicalldbg( ini->inimemtag, INI_MTAG_PARAM );
     p = (iniparam_t*)ini->inimalloc( sizeof(iniparam_t) );
     p->next = NULL;
     p->sect = NULL;
@@ -116,12 +150,17 @@ static iniparam_t* IniParamCreate( ini_t* ini, inistring_t* key, inistring_t* va
 IniSectCreate
 ================
 */
-inisect_t* IniSectCreate( ini_t* ini, inistring_t* key, inistring_t* comment ) {
+static inisect_t* IniSectCreate( ini_t* ini, inistring_t* key, inistring_t* comment ) {
     inisect_t* s;
     
     iniassert( ini );
     iniassert( key );
     
+    if( IniFindSect( ini, key->string ) ) {
+        printf( "already append sect: %s\n", key->string );
+    }
+    
+    inicalldbg( ini->inimemtag, INI_MTAG_SECT );
     s = (inisect_t*)ini->inimalloc( sizeof(inisect_t) );
     s->next = NULL;
     s->fnext = NULL;
@@ -148,6 +187,7 @@ static inidescr_t* IniDescrCreate( ini_t* ini, const char* filename, ptrdiff_t l
     iniassert( ini );
     iniassert( filename );
     
+    inicalldbg( ini->inimemtag, INI_MTAG_DESCR );
     d = (inidescr_t*)ini->inimalloc( sizeof(inidescr_t) );
     d->next = NULL;
     d->ini = ini;
@@ -635,7 +675,7 @@ file:'%s'\n", line, filename );
                 }
                 
                 // Append comment to current sectoin (if token is comment)
-                if( ini->flags & 0x2 && tk == INI_COMMENT ) {
+                if( ini->flags & INI_FLAG_PARSE_COMMENTS && tk == INI_COMMENT ) {
                     if( !param->comment ) {
                         param->comment = IniStringCreate( ini, b, l );
                     }
@@ -683,7 +723,7 @@ inherit '%s' line:%d file:'%s'\n", string, line, filename );
                 }
                 
                 // Append comment to current sectoin (if token is comment)
-                if( !!(ini->flags & 0x2) && tk == INI_COMMENT ) {
+                if( !!(ini->flags & INI_FLAG_PARSE_COMMENTS) && tk == INI_COMMENT ) {
                     if( !sect->comment ) {
                         sect->comment = IniStringCreate( ini, b, l );
                     }
@@ -771,7 +811,7 @@ line:%d file:'%s'\n", (int)l, b, line, filename );
                 IniScanToken( s );
                 
                 // Append comment to current parametr
-                if( !!(ini->flags & 0x2) && tk == INI_COMMENT ) {
+                if( !!(ini->flags & INI_FLAG_PARSE_COMMENTS) && tk == INI_COMMENT ) {
                     if( !param->comment ) {
                         param->comment = IniStringCreate( ini, b, l );
                     }
@@ -782,7 +822,7 @@ line:%d file:'%s'\n", (int)l, b, line, filename );
             // Parse next sequence:
             // ; comment
             case INI_COMMENT:
-                if( !!(ini->flags & 0x2) ) {
+                if( !!(ini->flags & INI_FLAG_PARSE_COMMENTS) ) {
                     // Create comment
                     param = IniParamCreate( ini, NULL, NULL,
                         IniStringCreate( ini, b, l )
@@ -801,7 +841,7 @@ line:%d file:'%s'\n", (int)l, b, line, filename );
         }
         
         // Check for next empty token
-        if( !(tk == 0 || (tk == INI_COMMENT && !(ini->flags & 0x2))) ) { 
+        if( !(tk == 0 || (tk == INI_COMMENT && !(ini->flags & INI_FLAG_PARSE_COMMENTS))) ) { 
             IniPrint( ini, "error: uncnown token '%.*s' line:%d file:'%s'\n", 
                 (int)l, b, line, filename );
             ret = -1;
@@ -834,8 +874,9 @@ static void IniFprintSect( FILE* f, inisect_t* s, int includeignore ) {
     int emptyline;          // Печатать ли пустую строку после конца секции
     int printcomment;       // Печатать ли комментарии
     int spaceaftereq;       // Пробел после знака равно
+    int printheirs;         // Печатать наследников перед секцией
     int printempty;         // Печатать пустые строки, если такие есть
-    int spacebeforeeq;      // Печатать пробел перед знаком 
+    int spacebeforeeq;      // Печатать пробел перед знаком
     iniinh_t* inh;          // Унаследованные секции
     iniparam_t* p;          // Параметры секции
 
@@ -846,11 +887,28 @@ static void IniFprintSect( FILE* f, inisect_t* s, int includeignore ) {
 
     flags = s->filename->ini->flags;
     keyalign = (flags >> 24) & 0xff;
-    emptyline = flags & 0x8000;
-    printcomment = flags & 0x4000;
-    spaceaftereq = flags & 0x2000;
-    printempty = flags & 0x1000;
-    spacebeforeeq = keyalign == 0 && (flags & 0x800);
+    emptyline = flags & INI_FLAG_EMPTY_LINE_AFTER_SECT;
+    printheirs = flags & INI_FLAG_PRINT_HEIRS;
+    printcomment = flags & INI_FLAG_PRINT_COMMENTS;
+    spaceaftereq = flags & INI_FLAG_SPACE_AFTER_EQ;
+    printempty = flags & INI_FLAG_PRINT_EMPTY_LINES;
+    spacebeforeeq = keyalign == 0 && (flags & INI_FLAG_SPACE_BEFORE_EQ);
+
+    // ; sect_heir1, sect_heir2, ...
+    if( printheirs ) {
+        inh = s->heirs;
+        if( inh ) {
+            fprintf( f, "; " );
+            while( inh ) {
+                fprintf( f, "%s", inh->inhSect->key->string );
+                inh = inh->next;
+                if( inh ) {
+                    fprintf( f, ", " );
+                }
+            }
+            fprintf( f, "\n" );
+        }
+    }
 
     // [section_name]:inherit1, inherit2, ...; comment
     if( s != s->filename->gsect ) {
@@ -946,7 +1004,7 @@ static void IniFprintFiledescr( FILE* f, inidescr_t* d, int includeignore ) {
     
     flags = d->ini->flags;
     // print the file name at the top of the file
-    if( flags & 0x400 ) {
+    if( flags & INI_FLAG_PRINT_FNAME_TOP ) {
         fprintf( f, "; %s\n", d->filename->string );
     }
     
@@ -957,7 +1015,7 @@ static void IniFprintFiledescr( FILE* f, inidescr_t* d, int includeignore ) {
     }
     
     // print the file name at the bottom of the file
-    if( flags & 0x200 ) {
+    if( flags & INI_FLAG_PRINT_FNAME_BOTTOM ) {
         fprintf( f, "; %s\n", d->filename->string );
     }
 }
@@ -978,6 +1036,88 @@ static void IniFprint( FILE* f, ini_t* ini, int includeignore ) {
         IniFprintSect( f, s, includeignore );
         s = s->next;
     }
+}
+
+/*
+================
+IniExcludeFromInherit
+
+  Исключить из списка from->inherit указатель на секцию ptrTo.
+Функция ищет структуру наследования, в которой хранится указатель ptrTo и
+исключает структуру из списка.
+  Фукнция возвращает указатель на исключённую структуру, или NULL если не
+удалось найти структуру.
+================
+*/
+static iniinh_t* IniExcludeFromInherit( inisect_t* from, inisect_t* exclude ) {
+    iniinh_t* it;
+    iniinh_t* ret;
+
+    iniassert( from );
+    iniassert( exclude );
+
+    it = from->inherit;
+    ret = NULL;
+    // exclude from inherit
+    if( it->inhSect == exclude ) { // is first
+        ret = it;
+        from->inherit = it->next;
+    } else {
+        while( it->next ) {
+            if( it->next->inhSect == exclude ) {
+                ret = it->next;
+                it->next = ret->next;
+                break;
+            }
+            it = it->next;
+        }
+    }
+    if( it != NULL ) {
+        from->inheritLast = it;
+    }
+    
+    return ret;
+}
+
+/*
+================
+IniExcludeFromHeir
+
+  Исключить из списка from->heir указатель на секцию ptrTo.
+Функция ищет структуру наследования, в которой хранится указатель ptrTo и
+исключает структуру из списка.
+  Фукнция возвращает указатель на исключённую структуру, или NULL если не
+удалось найти структуру.
+================
+*/
+static iniinh_t* IniExcludeFromHeir( inisect_t* from, inisect_t* exclude ) {
+    iniinh_t* it;
+    iniinh_t* ret;
+
+    iniassert( from );
+    iniassert( exclude );
+
+    it = from->heirs;
+    ret = NULL;
+    // exclude from heirs
+    if( it->inhSect == exclude ) { // is first
+        ret = it;
+        from->heirs = it->next;
+    } else {
+        while( it->next ) {
+            if( it->next->inhSect == exclude ) {
+                ret = it->next;
+                it->next = ret->next;
+                break;
+            }
+            it = it->next;
+        }
+    }
+    if( it != NULL ) {
+        from->heirsLast = it;
+    }
+    
+    return ret;
 }
 
 /*
@@ -1176,6 +1316,7 @@ void IniInit( ini_t* ini, fnIniMalloc malloc, fnIniFree free, char* buf, ptrdiff
     
     ini->inimalloc = malloc;
     ini->inifree = free;
+    ini->inimemtag = NULL;
     ini->errbuf = buf;
     ini->errbufSize = size;
     ini->numOfErrors = 0;
@@ -1252,7 +1393,7 @@ IniSetParseComments
 */
 void IniSetParseComments( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x2 : ini->flags & ~0x2;
+    INI_SET_BIT(ini->flags, INI_FLAG_PARSE_COMMENTS, flag);
 }
 
 /*
@@ -1272,7 +1413,7 @@ IniSetEmptyLineAfterSection
 */
 void IniSetEmptyLineAfterSection( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x8000 : ini->flags & ~0x8000;
+    INI_SET_BIT(ini->flags, INI_FLAG_EMPTY_LINE_AFTER_SECT, flag );
 }
 
 /*
@@ -1282,7 +1423,7 @@ IniSetSpaceBeforeEqual
 */
 void IniSetSpaceBeforeEqual( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x800 : ini->flags & ~0x800;
+    INI_SET_BIT(ini->flags, INI_FLAG_SPACE_BEFORE_EQ, flag );
 }
 
 /*
@@ -1292,7 +1433,7 @@ IniSetSpaceAfterEqual
 */
 void IniSetSpaceAfterEqual( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x2000 : ini->flags & ~0x2000;
+    INI_SET_BIT(ini->flags, INI_FLAG_SPACE_AFTER_EQ, flag );
 }
 
 /*
@@ -1302,7 +1443,7 @@ IniSetPrintComments
 */
 void IniSetPrintComments( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x4000 : ini->flags & ~0x4000;
+    INI_SET_BIT(ini->flags, INI_FLAG_PRINT_COMMENTS, flag);
 }
 
 /*
@@ -1312,7 +1453,7 @@ IniSetPrintEmptyLines
 */
 void IniSetPrintEmptyLines( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x1000 : ini->flags & ~0x1000;
+    INI_SET_BIT(ini->flags, INI_FLAG_PRINT_EMPTY_LINES, flag);
 }
 
 /*
@@ -1322,7 +1463,7 @@ IniSetPrintFilenameInTop
 */
 void IniSetPrintFilenameInTop( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x400 : ini->flags & ~0x400;
+    INI_SET_BIT(ini->flags, INI_FLAG_PRINT_FNAME_TOP, flag);
 }
 
 /*
@@ -1332,7 +1473,37 @@ IniSetPrintFilenameInBottom
 */
 void IniSetPrintFilenameInBottom( ini_t* ini, unsigned char flag ) {
     iniassert( ini );
-    ini->flags = flag ? ini->flags | 0x200 : ini->flags & ~0x200;
+    INI_SET_BIT(ini->flags, INI_FLAG_PRINT_FNAME_BOTTOM, flag);
+}
+
+/*
+================
+IniSetPrintHeirsBeforeSect
+================
+*/
+void IniSetPrintHeirsBeforeSect( ini_t* ini, unsigned char flag ) {
+    iniassert( ini );
+    INI_SET_BIT(ini->flags, INI_FLAG_PRINT_HEIRS, flag);
+}
+
+/*
+================
+IniSetCheckForSections
+================
+*/
+void IniSetCheckForSections( ini_t* ini, unsigned char flag ) {
+    iniassert( ini );
+    INI_SET_BIT(ini->flags, INI_FLAG_CHECK_FOR_SECT, flag);
+}
+
+/*
+================
+IniSetCheckForParameters
+================
+*/
+void IniSetCheckForParameters( ini_t* ini, unsigned char flag ) {
+    iniassert( ini );
+    INI_SET_BIT(ini->flags, INI_FLAG_CHECK_FOR_PARAM, flag);
 }
 
 /*
@@ -1450,81 +1621,94 @@ void IniExcludeInherit( iniinh_t* inh ) {
 
 /*
 ================
+IniExcludeHeir
+================
+*/
+void IniExcludeHeir( iniinh_t* inh ) {
+    
+}
+
+/*
+================
 IniExcludeSect
 ================
 */
 void IniExcludeSect( inisect_t* sect ) {
-    /*inisect_t* it;
-    inidescr_t* descr;
     ini_t* ini;
+    inidescr_t* descr;
+    inisect_t* it;
     iniinh_t* inh;
-    iniinh_t* inhtmp;
-    //iniinh_t* sectinh;
-    //iniinh_t* sectinhtmp;
+    iniinh_t* heir;
+    iniinh_t* forFree;
     fnIniFree free;
     int sectIsFirst;
     int sectIsLast;
 
-    //iniassert( 0 );
-    iniassert( sect->filename->gsect != sect );
     iniassert( sect );
     iniassert( sect->filename );
     iniassert( sect->filename->ini );
+    iniassert( sect->filename->gsect != sect );
+    iniassert( sect->filename->ini->inifree );
 
     descr = sect->filename;
     ini = descr->ini;
     free = ini->inifree;
+
+    // exclude from ini_t
     it = ini->firstSect;
     sectIsFirst = ini->firstSect == sect;
     sectIsLast = ini->lastSect == sect;
-
-    // Exclude from ini_t
     if( sectIsFirst && sectIsLast ) {
         ini->firstSect = NULL;
         ini->lastSect = NULL;
     } else if( sectIsFirst ) {
         ini->firstSect = it->next;
-    } else if( sectIsLast ) {
-        while( it->next != sect ) {
-            it = it->next;
-        }
-        it->next = NULL;
-        ini->lastSect = it;
     } else {
         while( it->next != sect ) {
             it = it->next;
         }
         it->next = sect->next;
     }
-    
-    it = descr->gsect->next;
-    sectIsFirst = descr->gsect->next == sect;
+
+    // exclude from inidescr_t
+    it = descr->gsect->fnext;
+    sectIsFirst = descr->gsect->fnext == sect;
     sectIsLast = descr->lastSect == sect;
-    
-    // Exclude from inidescr_t
     if( sectIsFirst && sectIsLast ) {
-        descr->gsect->next = NULL;
+        descr->gsect->fnext = NULL;
         descr->lastSect = NULL;
     } else if( sectIsFirst ) {
-        descr->gsect->next = it->next;
-    } else if( sectIsLast ) {
-        while( it->next != sect ) {
-            it = it->next;
-        }
-        it->next = NULL;
-        ini->lastSect = it;
+        descr->gsect->fnext = it->fnext;
     } else {
-        while( it->next != sect ) {
-            it = it->next;
+        while( it->fnext != sect ) {
+            it = it->fnext;
         }
-        it->next = sect->next;
+        it->fnext = sect->fnext;
     }
-    
-    
-   // iniinh_t*           inherited;  // Список наследованных секций (то что наследуется текущей секцией)
-   // iniinh_t*           heirs;      // Список секций прямых наследников (то что наследует текущую секцию)
-    
-    IniFreeSect( sect );*/
+
+    // remove from heirs (other sections)
+    inh = sect->inherit;
+    while( inh ) {
+        forFree = IniExcludeFromHeir( inh->inhSect, sect );
+        // free inherit
+        iniassert( forFree );
+        free( forFree );
+        // next
+        inh = inh->next;
+    }
+
+    // remove from inherit (other sections)
+    heir = sect->heirs;
+    while( heir ) {
+        forFree = IniExcludeFromInherit( heir->inhSect, sect );
+        // free inherit
+        iniassert( forFree );
+        free( forFree );
+        // next
+        heir = heir->next;
+    }
+
+    IniFreeSect( sect );
 }
 
 
@@ -1557,7 +1741,7 @@ inisect_t* IniAppendSect( inidescr_t* descr, const char* key ) {
     iniassert( descr );
     iniassert( key );
     iniassert( key[0] != 0 );
-    
+
     s = IniSectCreate( descr->ini, 
         IniStringCreate( descr->ini, key, -1 ),
         NULL

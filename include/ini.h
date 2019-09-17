@@ -15,8 +15,20 @@ struct inisect_s;
 struct ini_s;
 
 typedef void*(*fnIniMalloc)(size_t);
+typedef void(*fnIniMallocTag)(unsigned);
 typedef void(*fnIniFree)(void*);
 typedef int(*fnIniFilter)(void*,void* userData);
+
+
+
+#define INI_MTAG_STRING     0x01
+#define INI_MTAG_DESCR      0x02
+#define INI_MTAG_INHERIT    0x03
+#define INI_MTAG_HEIR       0x04
+#define INI_MTAG_PARAM      0x05
+#define INI_MTAG_SECT       0x06
+
+
 
 typedef struct {
     ptrdiff_t           length;     // Длинна строки
@@ -64,25 +76,14 @@ typedef struct inisect_s {
 typedef struct ini_s {
     fnIniMalloc         inimalloc;  // Функция аллокации памяти
     fnIniFree           inifree;    // Функция деаллокации памяти
+    fnIniMallocTag      inimemtag;  // Функция задаёт тег аллокации памяти
     char*               errbuf;     // Буфер в который пишутся ошибки
     ptrdiff_t           errbufSize; // Размер буфера
     ptrdiff_t           bufFill;    // Сколько байт из буфера заполнено
     int                 numOfErrors;// Количество ошибок
-    
+
     unsigned            flags;      // Флаги 0x1 - флаг буфера (используется
                                     //     внутренними функциями)
-                                    // 0x2 - флаг чтения (парсинга) 
-                                    //     комментариев
-                                    // 0x8000 - пустая линия после секции
-                                    // 0x4000 - печатать ли комментарии
-                                    // 0x2000 - пробел после знака =
-                                    // 0x1000 - печатать пустые строки
-                                    // 0x800 - пробел перед знаком = (только 
-                                    //     если выравнивание равно нулю)
-                                    // 0x400 - печатать имя текущего файла 
-                                    //     в самом верху, перед печатью секций
-                                    // 0x200 - печатать имя текущего файла 
-                                    //     в самом низу, после всех секций
                                     // 0xff000000 - выравнивание ключа при 
                                     //     печати
     inisect_t*          firstSect;  // Первая секция в ini
@@ -167,17 +168,39 @@ void IniSetPrintFilenameInBottom( ini_t* ini, unsigned char flag );
 // Изначально установлено в 0
 // Для вывода названия файла внизу нужно передать в flags значение 1
 
+void IniSetPrintHeirsBeforeSect( ini_t* ini, unsigned char flag );
+// Печатать всех наследников перед секцией как комментарий
+// Изначально установлено в 0
+// Для вывода наследников нужно передать в flags значение 1
+
+void IniSetCheckForSections( ini_t* ini, unsigned char flag );
+// Проверять существование секций с таким же именем перед добавлением
+// Изначально установлено в 1
+// Для того что бы не было проверки на существование секций нужно передать
+// в flag значение 0. Это может значительно ускоритьарсинг
+
+void IniSetCheckForParameters( ini_t* ini, unsigned char flag );
+// Проверять существование параметров с таким же именем перед добавлением вверху
+// секцию
+// Изначально установлено в 1
+// Для выключения проверки существующих параметров нужно в flags передать 0
+// Выключение проверки может ускорить парсинг
+
 
 
 void IniExcludeParam( iniparam_t* param );
 // Извлечь параметр param из секции и удалить его и все связанные с ним ссылки
 
 void IniExcludeInherit( iniinh_t* inh );
-// Извлечь унаследованную секцию inh, и удалить из списка inh из списка
-// унаследованных, функция так же удаляет ссылку из наследников секций
+// Извлечь унаследованную inh, и удалить inh из списка унаследованных,
+// функция так же удаляет ссылку из наследников секций
+
+void IniExcludeHeir( iniinh_t* inh );
+// Извлечь наследника inh, и удалить inh из списка наследников, функция
+// так же удаляет ссылку из унаследованных секций
 
 void IniExcludeSect( inisect_t* sect );
-// TODO
+// Извлечь секцию sect из списка секций, так же удаляет всех наследников
 
 
 
